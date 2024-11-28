@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Text Tunnel with Live Firehose Data</title>
+  <style>
+    body { margin: 0; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.141.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@webxr-api/polyfill"></script>
+
+  <script>
+    let scene, camera, renderer, clock;
+    let tunnelTextGroup;
+    let firehoseSocket;
+
+    const textData = []; // This will store live text from the firehose stream
+
+    // Initialize WebXR
+    if (navigator.xr) {
+      navigator.xr.requestSession('immersive-vr').then(startXRSession);
+    }
+
+    function startXRSession(session) {
+      session.addEventListener('end', onXRSessionEnd);
+      
+      // Set up renderer for WebXR
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      // Set up scene and camera
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 1.5, 3);
+      
+      // Create the tunnel group for the text elements
+      tunnelTextGroup = new THREE.Group();
+      scene.add(tunnelTextGroup);
+      
+      clock = new THREE.Clock();
+
+      // Start the render loop for WebXR
+      renderer.setAnimationLoop(animate);
+
+      // Initialize the firehose WebSocket stream
+      initFirehoseStream();
+    }
+
+    function onXRSessionEnd() {
+      renderer.dispose();
+    }
+
+    function animate() {
+      // Update tunnel text movement
+      const deltaTime = clock.getDelta();
+
+      // Move all text elements to create the illusion of a tunnel
+      tunnelTextGroup.position.z -= deltaTime * 5;
+
+      // Recycle text once it passes a certain point
+      tunnelTextGroup.children.forEach(child => {
+        if (child.position.z < -20) {
+          tunnelTextGroup.remove(child);
+        }
+      });
+
+      // Add new live text from the firehose stream if available
+      if (textData.length > 0) {
+        addTextToTunnel(textData.shift());
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    function addTextToTunnel(text) {
+      const geometry = new THREE.TextGeometry(text, {
+        font: new THREE.FontLoader().load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json'),
+        size: 2,
+        height: 0.1
+      });
+      const material = new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff });
+      const textMesh = new THREE.Mesh(geometry, material);
+
+      // Position the text in the tunnel space
+      textMesh.position.set(0, 0, tunnelTextGroup.position.z + 10);
+      tunnelTextGroup.add(textMesh);
+    }
+
+    function initFirehoseStream() {
+      const uri = "wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos"; // Adjust for real URL
+      firehoseSocket = new WebSocket(uri);
+
+      firehoseSocket.onmessage = function(event) {
+        // Assuming the message is in JSON format and contains event data
+        const data = JSON.parse(event.data);
+        if (data && data.ops) {
+          data.ops.forEach(op => {
+            const text = `Event from ${op.repo}: ${op.action} ${op.path}`;
+            textData.push(text);
+          });
+        }
+      };
+
+      firehoseSocket.onerror = function(error) {
+        console.error('Firehose connection error:', error);
+      };
+    }
+
+    window.addEventListener('resize', onWindowResize);
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  </script>
+</body>
+</html>
