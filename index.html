@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>3D Text Tunnel with Live Firehose Data</title>
   <style>
-    body { margin: 0; }
+    body { margin: 0; overflow: hidden; }
     canvas { display: block; }
   </style>
 </head>
@@ -17,13 +17,19 @@
     let scene, camera, renderer, clock;
     let tunnelTextGroup;
     let firehoseSocket;
+    let font;
 
     const textData = []; // This will store live text from the firehose stream
 
-    // Initialize WebXR
-    if (navigator.xr) {
-      navigator.xr.requestSession('immersive-vr').then(startXRSession);
-    }
+    // Load font for 3D text
+    const fontLoader = new THREE.FontLoader();
+    fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (loadedFont) => {
+      font = loadedFont;
+      // Initialize WebXR session after font is loaded
+      if (navigator.xr) {
+        navigator.xr.requestSession('immersive-vr').then(startXRSession);
+      }
+    });
 
     function startXRSession(session) {
       session.addEventListener('end', onXRSessionEnd);
@@ -78,8 +84,10 @@
     }
 
     function addTextToTunnel(text) {
+      if (!font) return; // Ensure font is loaded before adding text
+
       const geometry = new THREE.TextGeometry(text, {
-        font: new THREE.FontLoader().load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json'),
+        font: font,
         size: 2,
         height: 0.1
       });
@@ -87,7 +95,7 @@
       const textMesh = new THREE.Mesh(geometry, material);
 
       // Position the text in the tunnel space
-      textMesh.position.set(0, 0, tunnelTextGroup.position.z + 10);
+      textMesh.position.set(0, Math.random() * 2 - 1, tunnelTextGroup.position.z + 10);
       tunnelTextGroup.add(textMesh);
     }
 
@@ -108,6 +116,10 @@
 
       firehoseSocket.onerror = function(error) {
         console.error('Firehose connection error:', error);
+      };
+
+      firehoseSocket.onopen = function() {
+        console.log('Connected to firehose stream!');
       };
     }
 
